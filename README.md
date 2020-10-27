@@ -102,7 +102,7 @@ while **quivers** allow to construct functors from arbitrary python functions.
 The result can then be simplified using `diagram.normalize()` to remove the snakes.
 
 ```python
-from discopy import Functor, Quiver
+from discopy import Functor
 
 def wiring(word):
     if word.cod == n:  # word is a noun
@@ -111,7 +111,7 @@ def wiring(word):
         return Cap(n.r, n) @ Cap(n, n.l)\
             >> Id(n.r) @ Box(word.name, n @ n, s) @ Id(n.l)
 
-W = Functor(ob={s: s, n: n}, ar=Quiver(wiring))
+W = Functor(ob={s: s, n: n}, ar=wiring)
 
 
 rewrite_steps = W(sentence).normalize()

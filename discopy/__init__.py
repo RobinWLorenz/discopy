@@ -24,7 +24,6 @@ discopy computes natural language meaning in pictures.
 """
 
 from discopy import cat, monoidal, rigid, tensor, quantum, grammar, biclosed
-from discopy.cat import Quiver
 from discopy.rigid import (
     Ob, Ty, PRO, Box, Diagram, Id, Cup, Cap, Swap, Functor)
 from discopy.tensor import Dim, Tensor, TensorFunctor

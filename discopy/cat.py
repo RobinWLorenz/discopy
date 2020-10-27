@@ -493,11 +493,6 @@ class Functor:
         Class to be used as arrows for the codomain of the functor.
         If None, this will be set to :class:`cat.Arrow`.
 
-    See Also
-    --------
-    Quiver : For functors from infinitely-generated categories,
-             use quivers to create dict-like objects from functions.
-
     Notes
     -----
     We can check the axioms of dagger functors.
@@ -551,50 +546,3 @@ class Functor:
             return self.ar_factory.id(self(arrow.dom)).then(
                 *map(self, arrow.boxes))
         raise TypeError(messages.type_err(Arrow, arrow))
-
-
-class Quiver:
-    """
-    Wraps a function into an immutable dict-like object, used as input for a
-    :class:`Functor`.
-
-    >>> ob, ar = Quiver(lambda x: x), Quiver(lambda f: f)
-    >>> F = Functor(ob, ar)
-    >>> x, y, z = Ob('x'), Ob('y'), Ob('z')
-    >>> f, g = Box('f', x, y), Box('g', y, z)
-    >>> assert F(x) == x and F(f >> g) == f >> g
-
-    Parameters
-    ----------
-    func : callable
-        Any callable Python object.
-
-    Notes
-    -----
-    In conjunction with :attr:`Box.data`, this can be used to create a
-    :class:`Functor` from a free category with infinitely many generators.
-
-    >>> h = Box('h', x, x, data=42)
-    >>> def ar_func(box):
-    ...     return Box(box.name, box.dom, box.cod, data=box.data + 1)
-    >>> F = Functor(ob, Quiver(ar_func))
-    >>> assert F(h).data == 43 and F(F(h)).data == 44
-
-    If :attr:`Box.data` is a mutable object, then so can be the image of a
-    :class:`Functor` on it.
-
-    >>> ar = Quiver(lambda f: f if all(f.data) else f[::-1])
-    >>> F = Functor(ob, ar)
-    >>> m = Box('m', x, x, data=[True])
-    >>> assert F(m) == m
-    >>> m.data.append(False)
-    >>> assert F(m) == m[::-1]
-    """
-    def __init__(self, func):
-        self._func = func
-
-    def __getitem__(self, box):
-        return self._func(box)
-
-    def __repr__(self):
-        return "Quiver({})".format(repr(self._func))

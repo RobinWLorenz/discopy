@@ -11,5 +11,4 @@ discopy.cat
     Id.rst
     Box.rst
     Functor.rst
-    Quiver.rst
     AxiomError.rst

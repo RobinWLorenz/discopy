@@ -233,31 +233,6 @@ def test_Functor_call():
     assert F(f >> g) == f.dagger() >> f >> g
 
 
-def test_Quiver():
-    x, y, z = Ob('x'), Ob('y'), Ob('z')
-    F = Functor({x: x, y: y, z: z}, Quiver(lambda x: x))
-    f = Box('f', x, y, data=[0, 1])
-    assert F(f) == Box('f', Ob('x'), Ob('y'), data=[0, 1])
-    f.data.append(2)
-    assert F(f) == Box('f', Ob('x'), Ob('y'), data=[0, 1, 2])
-
-
-def test_Quiver_init():
-    ar = Quiver(lambda x: x ** 2)
-    assert ar[3] == 9
-
-
-def test_Quiver_getitem():
-    assert Quiver(lambda x: x * 10)[42] == 420
-    with raises(TypeError) as err:
-        Quiver(lambda x: x * 10)[42] = 421
-    "does not support item assignment" in str(err.value)
-
-
-def test_Quiver_repr():
-    assert "Quiver(<function " in repr(Quiver(lambda x: x))
-
-
 def test_total_ordering():
     x, y, z = Ob('x'), Ob('y'), Ob('z')
     assert sorted([z, y, x]) == [x, y, z]

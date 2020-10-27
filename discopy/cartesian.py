@@ -36,7 +36,6 @@ We can check the axioms for the Copy/Discard comonoid on specific inputs:
 
 from discopy.cat import AxiomError
 from discopy import messages, monoidal, rigid
-from discopy.cat import Quiver
 from discopy.rigid import PRO
 
 
@@ -197,10 +196,10 @@ class Diagram(rigid.Diagram):
         >>> assert SWAP(1, 2) == (2, 1)
         >>> assert (COPY @ COPY >> Id(1) @ SWAP @ Id(1))(1, 2) == (1, 2, 1, 2)
         """
-        ob = Quiver(lambda t: PRO(len(t)))
-        ar = Quiver(lambda f:
-                    Function(len(f.dom), len(f.cod), f.function))
-        return PythonFunctor(ob, ar)(self)(*values)
+        F = PythonFunctor(
+            ob=lambda t: PRO(len(t)),
+            ar=lambda f: Function(len(f.dom), len(f.cod), f.function))
+        return F(self)(*values)
 
 
 class Id(Diagram):

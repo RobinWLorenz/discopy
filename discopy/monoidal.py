@@ -37,7 +37,7 @@ We can check the Eckerman-Hilton argument, up to interchanger.
 """
 
 from discopy import cat, messages, drawing
-from discopy.cat import Ob, Quiver, AxiomError
+from discopy.cat import Ob, AxiomError
 
 
 class Ty(Ob):
@@ -708,8 +708,7 @@ class Diagram(cat.Arrow):
         >>> assert d.foliation().dagger().flatten()\\
         ...     == d.foliation().flatten().dagger()
         """
-        return self.upgrade(
-            Functor(Quiver(lambda x: x), Quiver(lambda f: f))(self))
+        return self.upgrade(Functor(lambda x: x, lambda f: f)(self))
 
     def foliation(self):
         """
