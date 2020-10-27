@@ -22,7 +22,7 @@ try:  # pragma: no cover
     import warnings
     for msg in messages.IGNORE_WARNINGS:
         warnings.filterwarnings("ignore", message=msg)
-    import jax.numpy as np
+    import jax.numpy as np  # type: ignore
     def array2string(array, max_length=messages.NUMPY_THRESHOLD):
         """ array2string is not implemented in jax.numpy """
         ls = list(array)
@@ -31,10 +31,10 @@ try:  # pragma: no cover
         return "[{}]".format(", ".join(map(str, ls)))
     np.array2string = array2string
 except ImportError:  # pragma: no cover
-    import numpy as np
-    from numpy import array2string as _array2string
+    import numpy as np  # type: ignore
+    from numpy import array2string as _array2string  # type: ignore
     np.set_printoptions(threshold=messages.NUMPY_THRESHOLD)
-    def array2string(array, **params):
+    def array2string(array, **params):  # type: ignore
         """ makes sure we get the same doctest with numpy and jax.numpy """
         return _array2string(array, separator=', ', **params)\
             .replace('[ ', '[').replace('  ',  ' ')

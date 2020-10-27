@@ -5,7 +5,7 @@ Implements the translation between discopy and pytket.
 """
 
 import pytket as tk
-from pytket.circuit import Bit, Qubit
+from pytket.circuit import Bit, Qubit  # type: ignore
 from pytket.utils import probs_from_counts
 
 from discopy import messages

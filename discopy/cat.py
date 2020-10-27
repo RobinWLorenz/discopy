@@ -21,8 +21,19 @@ We can create dagger functors from the free category to itself:
 >>> assert F(arrow) == (h >> f >> g)[::-1]
 """
 
+from collections import abc
+from typing import Any, Sized, Sequence, List, Union, Mapping, Callable, Optional, TypeVar
+from typing_extensions import Protocol
 from functools import total_ordering
 from discopy import messages
+
+
+T = TypeVar('T', covariant=True)
+
+
+class AddableSequence(Sequence[T], Protocol):
+    def __add__(self, other):
+        return self + other
 
 
 @total_ordering
@@ -57,7 +68,7 @@ class Ob:
 
     """
     @property
-    def name(self):
+    def name(self) -> Any:
         """
         The name of an object is immutable, it cannot be empty.
 
@@ -94,7 +105,7 @@ class Ob:
         return self.name < other.name
 
 
-class Arrow:
+class Arrow(Sized, Sequence['Arrow']):
     """
     Defines an arrow in a free dagger category.
 
@@ -120,11 +131,11 @@ class Arrow:
 
     """
     @staticmethod
-    def upgrade(arrow):
+    def upgrade(arrow: Arrow) -> Arrow:
         """ Allows class inheritance for then and __getitem__ """
         return arrow
 
-    def __init__(self, dom, cod, boxes, _scan=True):
+    def __init__(self, dom: Ob, cod: Ob, boxes: AddableSequence[Arrow], _scan=True):
         """
         >>> from discopy.monoidal import spiral
         >>> arrow = spiral(3)
@@ -148,7 +159,7 @@ class Arrow:
         self._dom, self._cod, self._boxes = dom, cod, boxes
 
     @property
-    def dom(self):
+    def dom(self) -> Ob:
         """
         The domain of an arrow is immutable.
 
@@ -162,7 +173,7 @@ class Arrow:
         return self._dom
 
     @property
-    def cod(self):
+    def cod(self) -> Ob:
         """
         The codomain of an arrow is immutable.
 
@@ -176,7 +187,7 @@ class Arrow:
         return self._cod
 
     @property
-    def boxes(self):
+    def boxes(self) -> List[Arrow]:
         """
         The list of boxes in an arrow is immutable. Use composition instead.
 
@@ -233,7 +244,7 @@ class Arrow:
     def __hash__(self):
         return hash(repr(self))
 
-    def then(self, *others):
+    def then(self, *others: Arrow) -> Arrow:
         """
         Returns the composition of `self` with arrows `others`.
 
@@ -286,7 +297,7 @@ class Arrow:
     def __lshift__(self, other):
         return other.then(self)
 
-    def dagger(self):
+    def dagger(self) -> Arrow:
         """
         Returns the dagger of `self`, this method is called using the unary
         operator :code:`[::-1]`, i.e. :code:`self[::-1] == self.dagger()`.
@@ -311,7 +322,7 @@ class Arrow:
         return self[::-1]
 
     @staticmethod
-    def id(x):
+    def id(x) -> Arrow:
         """
         Returns the identity arrow on x.
 
@@ -384,7 +395,7 @@ class Box(Arrow):
             Extra data in the box, default is `None`.
 
     """
-    def __init__(self, name, dom, cod, data=None, _dagger=False):
+    def __init__(self, name: Any, dom: Ob, cod: Ob, data=None, _dagger=False):
         if not str(name):
             raise ValueError(messages.empty_name(name))
         self._name, self._dom, self._cod = name, dom, cod
@@ -392,7 +403,7 @@ class Box(Arrow):
         Arrow.__init__(self, dom, cod, [self], _scan=False)
 
     @property
-    def name(self):
+    def name(self) -> Any:
         """
         The name of a box is immutable.
 
@@ -406,7 +417,7 @@ class Box(Arrow):
         return self._name
 
     @property
-    def data(self):
+    def data(self) -> Any:
         """
         The attribute `data` is immutable, but it can hold a mutable object.
 
@@ -422,13 +433,13 @@ class Box(Arrow):
         return self._data
 
     @property
-    def is_dagger(self):
+    def is_dagger(self) -> bool:
         """
         Whether the box is dagger.
         """
         return self._dagger
 
-    def dagger(self):
+    def dagger(self) -> Box:
         return type(self)(
             name=self.name, dom=self.cod, cod=self.dom,
             data=self.data, _dagger=not self._dagger)
@@ -502,7 +513,10 @@ class Functor:
     >>> assert F(f[::-1]) == F(f)[::-1]
     >>> assert F(f.dom) == F(f).dom and F(f.cod) == F(f).cod
     """
-    def __init__(self, ob, ar, ob_factory=None, ar_factory=None):
+    def __init__(self,
+                 ob: Union[Mapping[Ob, Ob], Callable[[Ob], Ob]],
+                 ar: Union[Mapping[Box, Arrow], Callable[[Box], Arrow]],
+                 ob_factory=None, ar_factory=None):
         if ob_factory is None:
             ob_factory = Ob
         if ar_factory is None:
@@ -511,23 +525,23 @@ class Functor:
         self._ob, self._ar = ob, ar
 
     @property
-    def ob(self):
+    def ob(self) -> Mapping[Ob, Ob]:
         """
         >>> F = Functor({Ob('x'): Ob('y')}, {})
         >>> assert F.ob == {Ob('x'): Ob('y')}
         """
         return self._ob\
-            if hasattr(self._ob, "__getitem__") else Quiver(self._ob)
+            if isinstance(self._ob, abc.Mapping) else Quiver(self._ob)
 
     @property
-    def ar(self):
+    def ar(self) -> Mapping[Box, Arrow]:
         """
         >>> f, g = Box('f', Ob('x'), Ob('y')), Box('g', Ob('y'), Ob('z'))
         >>> F = Functor({}, {f: g})
         >>> assert F.ar == {f: g}
         """
         return self._ar\
-            if hasattr(self._ar, "__getitem__") else Quiver(self._ar)
+            if isinstance(self._ar, abc.Mapping) else Quiver(self._ar)
 
     def __eq__(self, other):
         return self.ob == other.ob and self.ar == other.ar
@@ -535,7 +549,7 @@ class Functor:
     def __repr__(self):
         return "Functor(ob={}, ar={})".format(repr(self.ob), repr(self.ar))
 
-    def __call__(self, arrow):
+    def __call__(self, arrow: Union[Ob, Arrow]) -> Union[Ob, Arrow]:
         if isinstance(arrow, Ob):
             return self.ob[arrow]
         if isinstance(arrow, Box):
@@ -546,3 +560,28 @@ class Functor:
             return self.ar_factory.id(self(arrow.dom)).then(
                 *map(self, arrow.boxes))
         raise TypeError(messages.type_err(Arrow, arrow))
+
+
+Source = TypeVar('Source')
+Target = TypeVar('Target')
+
+
+class Quiver(Mapping[Source, Target]):
+    """
+    Wraps a function into an immutable dict-like object, used as input for a
+    :class:`Functor`.
+    """
+    def __init__(self, func: Callable[[Source], Target]):
+        self._func = func
+
+    def __getitem__(self, box: Source) -> Target:
+        return self._func(box)
+
+    def __repr__(self):
+        return "Quiver({})".format(repr(self._func))
+
+    def __iter__(self):
+        raise TypeError
+
+    def __len__(self):
+        raise TypeError

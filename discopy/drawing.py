@@ -6,12 +6,12 @@ Drawing module.
 import os
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
-import networkx as nx
-from PIL import Image
-from IPython.display import HTML
-import matplotlib.pyplot as plt
-from matplotlib.path import Path
-from matplotlib.patches import PathPatch
+import networkx as nx  # type: ignore
+from PIL import Image  # type: ignore
+from IPython.display import HTML  # type: ignore
+import matplotlib.pyplot as plt  # type: ignore
+from matplotlib.path import Path  # type: ignore
+from matplotlib.patches import PathPatch  # type: ignore
 
 
 WIRE_BOXES = ['CUP', 'CAP', 'SWAP']

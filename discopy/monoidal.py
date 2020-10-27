@@ -36,11 +36,12 @@ We can check the Eckerman-Hilton argument, up to interchanger.
 >>> assert s1 @ s0 == s1 >> s0 == (s0 @ s1).interchange(0, 1)
 """
 
+from typing import Iterable, List, Tuple, Union, Sized
 from discopy import cat, messages, drawing
 from discopy.cat import Ob, AxiomError
 
 
-class Ty(Ob):
+class Ty(Ob, Iterable[Ob], Sized):
     """
     Implements a type as a list of :class:`discopy.cat.Ob`, used as domain and
     codomain for :class:`monoidal.Diagram`.
@@ -67,7 +68,7 @@ class Ty(Ob):
     >>> assert (x @ y) @ z == x @ y @ z == x @ (y @ z)
     """
     @property
-    def objects(self):
+    def objects(self) -> List[Ob]:
         """
         List of objects forming a type.
 
@@ -84,7 +85,7 @@ class Ty(Ob):
         """
         return list(self._objects)
 
-    def tensor(self, *others):
+    def tensor(self, *others: Ty) -> Ty:
         """
         Returns the tensor of types, i.e. the concatenation of their lists
         of objects. This is called with the binary operator `@`.
@@ -121,7 +122,7 @@ class Ty(Ob):
         return self.upgrade(
             Ty(*sum([t.objects for t in [self] + list(others)], [])))
 
-    def count(self, ob):
+    def count(self, ob: Union[Ty, Ob]) -> int:
         """
         Counts the occurrence of a given object.
 
@@ -146,7 +147,7 @@ class Ty(Ob):
         return self.objects.count(ob)
 
     @staticmethod
-    def upgrade(ty):
+    def upgrade(ty: Ty) -> Ty:
         """ Allows class inheritance for tensor and __getitem__ """
         return ty
 
@@ -203,7 +204,7 @@ class PRO(Ty):
     >>> assert PRO(1) == PRO(Ob(1))
     """
     @staticmethod
-    def upgrade(ty):
+    def upgrade(ty: Ty) -> Ty:
         for x in ty:
             if x.name != 1:
                 raise TypeError(messages.type_err(int, x.name))
@@ -246,13 +247,13 @@ class Layer(cat.Box):
     >>> print(first >> then)
     Id(x) @ f @ Id(z) >> Id(x) @ g @ Id(z)
     """
-    def __init__(self, left, box, right):
+    def __init__(self, left: Ty, box: 'Diagram', right: Ty):
         self._left, self._box, self._right = left, box, right
         name = "Layer({}, {}, {})".format(left, box, right)
         dom, cod = left @ box.dom @ right, left @ box.cod @ right
         super().__init__(name, dom, cod)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterable[Union[Ty, 'Diagram']]:
         yield self._left
         yield self._box
         yield self._right
@@ -300,10 +301,10 @@ class Diagram(cat.Arrow):
         Whenever the boxes do not compose.
     """
     @staticmethod
-    def upgrade(diagram):
+    def upgrade(diagram: cat.Arrow) -> Diagram:
         return diagram
 
-    def __init__(self, dom, cod, boxes, offsets, layers=None):
+    def __init__(self, dom: Ty, cod: Ty, boxes: List[Diagram], offsets: List[int], layers=None):
         if not isinstance(dom, Ty):
             raise TypeError(messages.type_err(Ty, dom))
         if not isinstance(cod, Ty):
