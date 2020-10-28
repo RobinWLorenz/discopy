@@ -22,22 +22,14 @@ We can create dagger functors from the free category to itself:
 """
 
 from collections import abc
-from typing import Any, Sized, Sequence, List, Union, Mapping, Callable, Optional, TypeVar
-from typing_extensions import Protocol
+from typing import (
+    Any, Sequence, List, Union, Mapping, Callable, TypeVar, Protocol, Generic, overload)
 from functools import total_ordering
 from discopy import messages
 
 
-T = TypeVar('T', covariant=True)
-
-
-class AddableSequence(Sequence[T], Protocol):
-    def __add__(self, other):
-        return self + other
-
-
 @total_ordering
-class Ob:
+class Ob(abc.Hashable):
     """
     Defines an object in a free category, only distinguished by its name.
 
@@ -105,7 +97,46 @@ class Ob:
         return self.name < other.name
 
 
-class Arrow(Sized, Sequence['Arrow']):
+T = TypeVar('T')
+
+
+class AddableSequence(Generic[T], Protocol):
+    """ Sequence type that can be added. """
+    def __add__(self, other) -> 'AddableSequence[T]': ...
+
+    def __len__(self): ...
+
+    @overload
+    def __getitem__(self, key: int) -> T: ...
+
+    @overload
+    def __getitem__(self, key: slice) -> 'AddableSequence[T]': ...
+
+    def __iter__(self): ...
+
+
+ObType = TypeVar('ObType')
+
+
+class Composable(Generic[ObType], Protocol):
+    """ Composable type, i.e. implements dom, cod, id and then. """
+    @property
+    def dom(self: 'Composable[ObType]') -> ObType: ...
+
+    @property
+    def cod(self: 'Composable[ObType]') -> ObType: ...
+
+    @staticmethod
+    def id(dom: ObType) -> 'Composable[ObType]': ...
+
+    def then(self: 'Composable[ObType]', *others: 'Composable[ObType]') -> 'Composable[ObType]': ...
+
+    def __lshift__(self: 'Composable[ObType]', other: 'Composable[ObType]') -> 'Composable[ObType]': ...
+
+    def __rshift__(self: 'Composable[ObType]', other: 'Composable[ObType]') -> 'Composable[ObType]': ...
+
+
+class Arrow(Composable[Ob], Sequence['Arrow']):
     """
     Defines an arrow in a free dagger category.
 
@@ -131,11 +162,12 @@ class Arrow(Sized, Sequence['Arrow']):
 
     """
     @staticmethod
-    def upgrade(arrow: Arrow) -> Arrow:
+    def upgrade(arrow: 'Arrow') -> 'Arrow':
         """ Allows class inheritance for then and __getitem__ """
         return arrow
 
-    def __init__(self, dom: Ob, cod: Ob, boxes: AddableSequence[Arrow], _scan=True):
+    def __init__(self, dom: Ob, cod: Ob,
+                 boxes: AddableSequence['Arrow'], _scan: bool = True):
         """
         >>> from discopy.monoidal import spiral
         >>> arrow = spiral(3)
@@ -187,7 +219,7 @@ class Arrow(Sized, Sequence['Arrow']):
         return self._cod
 
     @property
-    def boxes(self) -> List[Arrow]:
+    def boxes(self) -> AddableSequence['Arrow']:
         """
         The list of boxes in an arrow is immutable. Use composition instead.
 
@@ -244,7 +276,7 @@ class Arrow(Sized, Sequence['Arrow']):
     def __hash__(self):
         return hash(repr(self))
 
-    def then(self, *others: Arrow) -> Arrow:
+    def then(self, *others: 'Arrow') -> 'Arrow':  # type: ignore[override]
         """
         Returns the composition of `self` with arrows `others`.
 
@@ -297,7 +329,7 @@ class Arrow(Sized, Sequence['Arrow']):
     def __lshift__(self, other):
         return other.then(self)
 
-    def dagger(self) -> Arrow:
+    def dagger(self) -> 'Arrow':
         """
         Returns the dagger of `self`, this method is called using the unary
         operator :code:`[::-1]`, i.e. :code:`self[::-1] == self.dagger()`.
@@ -322,7 +354,7 @@ class Arrow(Sized, Sequence['Arrow']):
         return self[::-1]
 
     @staticmethod
-    def id(x) -> Arrow:
+    def id(x) -> 'Arrow':
         """
         Returns the identity arrow on x.
 
@@ -439,7 +471,7 @@ class Box(Arrow):
         """
         return self._dagger
 
-    def dagger(self) -> Box:
+    def dagger(self) -> 'Box':
         return type(self)(
             name=self.name, dom=self.cod, cod=self.dom,
             data=self.data, _dagger=not self._dagger)

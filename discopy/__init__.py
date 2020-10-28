@@ -31,7 +31,7 @@ from discopy.quantum import (
     C, Q, CQMap, CQMapFunctor, bit, qubit, Circuit, CircuitFunctor,
     Discard, MixedState, Measure, Encode, Ket, Bra, Rx, Rz, CRz,
     SWAP, CZ, CX, H, S, T, X, Y, Z)
-from discopy.grammar import Word
+from discopy.grammar import Word  # type: ignore
 from discopy.biclosed import Over, Under
 
 __version__ = '0.3.1'

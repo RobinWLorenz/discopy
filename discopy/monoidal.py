@@ -36,12 +36,14 @@ We can check the Eckerman-Hilton argument, up to interchanger.
 >>> assert s1 @ s0 == s1 >> s0 == (s0 @ s1).interchange(0, 1)
 """
 
-from typing import Iterable, List, Tuple, Union, Sized
+from typing import (
+    Any, Iterable, Callable, Sequence, List, Tuple, Union, Sized, cast)
+from mypy_extensions import KwArg
 from discopy import cat, messages, drawing
-from discopy.cat import Ob, AxiomError
+from discopy.cat import Ob, AxiomError, Composable, AddableSequence
 
 
-class Ty(Ob, Iterable[Ob], Sized):
+class Ty(Ob, Sequence[Ob], Sized):
     """
     Implements a type as a list of :class:`discopy.cat.Ob`, used as domain and
     codomain for :class:`monoidal.Diagram`.
@@ -85,7 +87,7 @@ class Ty(Ob, Iterable[Ob], Sized):
         """
         return list(self._objects)
 
-    def tensor(self, *others: Ty) -> Ty:
+    def tensor(self, *others: 'Ty') -> 'Ty':
         """
         Returns the tensor of types, i.e. the concatenation of their lists
         of objects. This is called with the binary operator `@`.
@@ -122,7 +124,7 @@ class Ty(Ob, Iterable[Ob], Sized):
         return self.upgrade(
             Ty(*sum([t.objects for t in [self] + list(others)], [])))
 
-    def count(self, ob: Union[Ty, Ob]) -> int:
+    def count(self, ob: Union['Ty', Ob]) -> int:
         """
         Counts the occurrence of a given object.
 
@@ -147,7 +149,7 @@ class Ty(Ob, Iterable[Ob], Sized):
         return self.objects.count(ob)
 
     @staticmethod
-    def upgrade(ty: Ty) -> Ty:
+    def upgrade(ty: 'Ty') -> 'Ty':
         """ Allows class inheritance for tensor and __getitem__ """
         return ty
 
@@ -253,7 +255,8 @@ class Layer(cat.Box):
         dom, cod = left @ box.dom @ right, left @ box.cod @ right
         super().__init__(name, dom, cod)
 
-    def __iter__(self) -> Iterable[Union[Ty, 'Diagram']]:
+    def __iter__(self  # type: ignore[override]
+            ) -> Iterable[Union[Ty, 'Diagram']]:
         yield self._left
         yield self._box
         yield self._right
@@ -273,7 +276,7 @@ class Layer(cat.Box):
         return super().__getitem__(key)
 
 
-class Diagram(cat.Arrow):
+class Diagram(cat.Arrow, Composable[Ty]):
     """
     Defines a diagram given dom, cod, a list of boxes and offsets.
 
@@ -301,10 +304,12 @@ class Diagram(cat.Arrow):
         Whenever the boxes do not compose.
     """
     @staticmethod
-    def upgrade(diagram: cat.Arrow) -> Diagram:
+    def upgrade(diagram: 'Diagram') -> 'Diagram':  # type: ignore[override]
         return diagram
 
-    def __init__(self, dom: Ty, cod: Ty, boxes: List[Diagram], offsets: List[int], layers=None):
+    def __init__(self, dom: Ty, cod: Ty,
+                 boxes: AddableSequence['Diagram'], offsets: List[int],
+                 layers: Composable[Ty] = None):
         if not isinstance(dom, Ty):
             raise TypeError(messages.type_err(Ty, dom))
         if not isinstance(cod, Ty):
@@ -312,7 +317,7 @@ class Diagram(cat.Arrow):
         if len(boxes) != len(offsets):
             raise ValueError(messages.boxes_and_offsets_must_have_same_len())
         if layers is None:
-            layers = cat.Id(dom)
+            layers = cast(Composable[Ty], cat.Arrow.id(dom))
             for box, off in zip(boxes, offsets):
                 if not isinstance(box, Diagram):
                     raise TypeError(messages.type_err(Diagram, box))
@@ -321,24 +326,29 @@ class Diagram(cat.Arrow):
                 left = layers.cod[:off] if layers else dom[:off]
                 right = layers.cod[off + len(box.dom):]\
                     if layers else dom[off + len(box.dom):]
-                layers = layers >> Layer(left, box, right)
-            layers = layers >> cat.Id(cod)
+                layers = layers >> cast(
+                    Composable[Ty], Layer(left, box, right))
+            layers = layers >> cast(Composable[Ty], cat.Arrow.id(cod))
         self._layers, self._offsets = layers, tuple(offsets)
-        super().__init__(dom, cod, boxes, _scan=False)
+        super().__init__(
+            dom, cod, cast(AddableSequence[cat.Arrow], boxes), _scan=False)
+        self.dom: Ty
+        self.cod: Ty
+        self.boxes: AddableSequence[Diagram]  # type: ignore
 
     @staticmethod
     def id(x):
         return Id(x)
 
     @property
-    def offsets(self):
+    def offsets(self) -> List[int]:
         """
         The offset of a box is the number of wires to its left.
         """
         return list(self._offsets)
 
     @property
-    def layers(self):
+    def layers(self) -> cat.Arrow:
         """
         A :class:`discopy.cat.Arrow` with :class:`Layer` boxes such that::
 
@@ -355,9 +365,9 @@ class Diagram(cat.Arrow):
                 offsets=diagram.offsets[i:j],
                 layers=diagram.layers[i:j])
         """
-        return self._layers
+        return cast(cat.Arrow, self._layers)
 
-    def then(self, *others):
+    def then(self, *others: 'Diagram') -> 'Diagram':  # type: ignore[override]
         if not others:
             return self
         if len(others) > 1:
@@ -368,7 +378,7 @@ class Diagram(cat.Arrow):
                     self.offsets + others[0].offsets,
                     layers=self.layers >> others[0].layers))
 
-    def tensor(self, *others):
+    def tensor(self, *others: 'Diagram') -> 'Diagram':
         """
         Returns the horizontal composition of 'self' with a diagram 'other'.
 
@@ -397,11 +407,13 @@ class Diagram(cat.Arrow):
         dom, cod = self.dom @ other.dom, self.cod @ other.cod
         boxes = self.boxes + other.boxes
         offsets = self.offsets + [n + len(self.cod) for n in other.offsets]
-        layers = cat.Id(dom)
+        layers = cast(Composable[Ty], cat.Id(dom))
         for left, box, right in self.layers:
-            layers = layers >> Layer(left, box, right @ other.dom)
+            layers = layers >> cast(
+                Composable[Ty], Layer(left, box, right @ other.dom))
         for left, box, right in other.layers:
-            layers = layers >> Layer(self.cod @ left, box, right)
+            layers = layers >> cast(
+                Composable[Ty], Layer(self.cod @ left, box, right))
         return self.upgrade(Diagram(dom, cod, boxes, offsets, layers=layers))
 
     def __matmul__(self, other):
@@ -446,7 +458,7 @@ class Diagram(cat.Arrow):
         return self.id(left) @ box @ self.id(right)
 
     @staticmethod
-    def swap(left, right):
+    def swap(left: Ty, right: Ty) -> 'Diagram':
         """
         Returns a diagram that swaps the left with the right wires.
 
@@ -465,7 +477,7 @@ class Diagram(cat.Arrow):
         return swap(left, right)
 
     @staticmethod
-    def permutation(perm, dom=None):
+    def permutation(perm: List[int], dom:Ty = None):
         """
         Returns the diagram that encodes a permutation of wires.
 
@@ -483,7 +495,7 @@ class Diagram(cat.Arrow):
         """
         return permutation(perm, dom)
 
-    def interchange(self, i, j, left=False):
+    def interchange(self, i: int, j: int, left: bool = False):
         """
         Returns a new diagram with boxes i and j interchanged.
 
@@ -553,7 +565,7 @@ class Diagram(cat.Arrow):
         return self.upgrade(
             Diagram(self.dom, self.cod, boxes, offsets, layers=layers))
 
-    def normalize(self, left=False):
+    def normalize(self, left: bool = False):
         """
         Implements normalisation of connected diagrams, see arXiv:1804.07832.
 
@@ -591,7 +603,9 @@ class Diagram(cat.Arrow):
             if no_more_moves:
                 break
 
-    def normal_form(self, normalize=None, **params):
+    Normalizer = Callable[['Diagram', KwArg(Any)], Iterable['Diagram']]
+
+    def normal_form(self, normalize: Normalizer = None, **params):
         """
         Returns the normal form of a diagram.
 
