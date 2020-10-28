@@ -37,13 +37,13 @@ We can check the Eckerman-Hilton argument, up to interchanger.
 """
 
 from typing import (
-    Any, Iterable, Callable, Sequence, List, Tuple, Union, Sized, cast)
+    Any, Iterable, Callable, Sequence, List, Union, cast, overload)
 from mypy_extensions import KwArg
 from discopy import cat, messages, drawing
 from discopy.cat import Ob, AxiomError, Composable, AddableSequence
 
 
-class Ty(Ob, Sequence[Ob], Sized):
+class Ty(Ob, Sequence[Ob]):
     """
     Implements a type as a list of :class:`discopy.cat.Ob`, used as domain and
     codomain for :class:`monoidal.Diagram`.
@@ -934,6 +934,12 @@ class Functor(cat.Functor):
         if ar_factory is None:
             ar_factory = Diagram
         super().__init__(ob, ar, ob_factory=ob_factory, ar_factory=ar_factory)
+
+    @overload  # type: ignore[override]
+    def __call__(self, diagram: Ty) -> Ty: ...
+
+    @overload
+    def __call__(self, diagram: Diagram) -> Diagram: ...
 
     def __call__(self, diagram):
         if isinstance(diagram, Ty):
