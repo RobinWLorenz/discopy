@@ -23,14 +23,14 @@ discopy computes natural language meaning in pictures.
 >>> assert A(sentence).normal_form() == Alice @ Bob >> love_box
 """
 
-from discopy import cat, monoidal, rigid, tensor, quantum, grammar, biclosed
+from discopy import cat, monoidal, rigid, tensor#, quantum, grammar, biclosed
 from discopy.rigid import (
     Ob, Ty, PRO, Box, Diagram, Id, Cup, Cap, Swap, Functor)
 from discopy.tensor import Dim, Tensor, TensorFunctor
-from discopy.quantum import (
-    C, Q, CQMap, CQMapFunctor, bit, qubit, Circuit, CircuitFunctor,
-    Discard, MixedState, Measure, Encode, Ket, Bra, Rx, Rz, CRz,
-    SWAP, CZ, CX, H, S, T, X, Y, Z)
+# from discopy.quantum import (
+#     C, Q, CQMap, CQMapFunctor, bit, qubit, Circuit, CircuitFunctor,
+#     Discard, MixedState, Measure, Encode, Ket, Bra, Rx, Rz, CRz,
+#     SWAP, CZ, CX, H, S, T, X, Y, Z)
 from discopy.grammar import Word  # type: ignore
 from discopy.biclosed import Over, Under
 

@@ -23,7 +23,8 @@ We can create dagger functors from the free category to itself:
 
 from collections import abc
 from typing import (
-    Any, Sequence, List, Union, Mapping, Callable, TypeVar, Protocol, Generic, overload)
+    Type, Any, Sequence, Iterable, Iterator, List, Union, Mapping, Callable,
+    Tuple, Optional, TypeVar, Protocol, Generic, overload, cast)
 from functools import total_ordering
 from discopy import messages
 
@@ -74,69 +75,56 @@ class Ob(abc.Hashable):
         """
         return self._name
 
-    def __init__(self, name):
+    def __init__(self, name: Any):
         if not str(name):
             raise ValueError(messages.empty_name(name))
         self._name = name
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Ob({})".format(repr(self.name))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.name)
 
-    def __eq__(self, other):
-        if not isinstance(other, Ob):
-            return False
-        return self.name == other.name
+    def __eq__(self, other: Any) -> bool:
+        return cast(bool, self.name == other.name)\
+            if isinstance(other, Ob) else False
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.name)
 
-    def __lt__(self, other):
-        return self.name < other.name
+    def __lt__(self, other: 'Ob') -> bool:
+        return cast(bool, self.name < other.name)
 
 
-T = TypeVar('T')
+T = TypeVar('T', covariant=True)
 
 
-class AddableSequence(Generic[T], Protocol):
-    """ Sequence type that can be added. """
-    def __add__(self, other) -> 'AddableSequence[T]': ...
-
-    def __len__(self): ...
-
-    @overload
-    def __getitem__(self, key: int) -> T: ...
-
-    @overload
-    def __getitem__(self, key: slice) -> 'AddableSequence[T]': ...
-
-    def __iter__(self): ...
-
-
-ObType = TypeVar('ObType', covariant=True)
-
-
-class Composable(Generic[ObType], Protocol):
+class Composable(Generic[T], Protocol):
     """ Composable type, i.e. implements dom, cod, id and then. """
     @property
-    def dom(self) -> ObType: ...
+    def dom(self) -> T:
+        """ Domain. """
 
     @property
-    def cod(self) -> ObType: ...
+    def cod(self) -> T:
+        """ Codomain. """
 
     @staticmethod
-    def id(dom: Ob) -> 'Composable[ObType]': ...
+    def id(dom: Ob) -> 'Composable[T]':
+        """ Identity. """
 
-    def then(self, *others: 'Composable[Ob]') -> 'Composable[ObType]': ...
+    def then(self, *others: 'Composable[Ob]') -> 'Composable[T]':
+        """ Composition """
 
-    def __lshift__(self, other: 'Composable[Ob]') -> 'Composable[ObType]': ...
+    def __lshift__(
+        self, other: 'Composable[Ob]') -> 'Composable[T]': ...
 
-    def __rshift__(self, other: 'Composable[Ob]') -> 'Composable[ObType]': ...
+    def __rshift__(
+        self, other: 'Composable[Ob]') -> 'Composable[T]': ...
 
 
-class Arrow(Composable[Ob], Sequence['Arrow']):
+class Arrow(Composable[Ob]):
     """
     Defines an arrow in a free dagger category.
 
@@ -167,7 +155,7 @@ class Arrow(Composable[Ob], Sequence['Arrow']):
         return arrow
 
     def __init__(self, dom: Ob, cod: Ob,
-                 boxes: AddableSequence['Arrow'], _scan: bool = True):
+                 boxes: List['Arrow'], _scan: bool = True):
         """
         >>> from discopy.monoidal import spiral
         >>> arrow = spiral(3)
@@ -219,7 +207,7 @@ class Arrow(Composable[Ob], Sequence['Arrow']):
         return self._cod
 
     @property
-    def boxes(self) -> AddableSequence['Arrow']:
+    def boxes(self) -> List['Arrow']:
         """
         The list of boxes in an arrow is immutable. Use composition instead.
 
@@ -230,11 +218,11 @@ class Arrow(Composable[Ob], Sequence['Arrow']):
         """
         return list(self._boxes)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator['Arrow']:
         for box in self.boxes:
             yield box
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: Union[int, slice]) -> 'Arrow':
         if isinstance(key, slice):
             if key.step == -1:
                 boxes = [box[::-1] for box in self.boxes[key]]
@@ -253,10 +241,10 @@ class Arrow(Composable[Ob], Sequence['Arrow']):
                 Arrow(boxes[0].dom, boxes[-1].cod, boxes, _scan=False))
         return self.boxes[key]
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.boxes)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if not self.boxes:  # i.e. self is identity.
             return repr(Id(self.dom))
         if len(self.boxes) == 1:  # i.e. self is a box.
@@ -264,16 +252,16 @@ class Arrow(Composable[Ob], Sequence['Arrow']):
         return "cat.Arrow(dom={}, cod={}, boxes={})".format(
             repr(self.dom), repr(self.cod), repr(self.boxes))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return ' >> '.join(map(str, self)) or str(self.id(self.dom))
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Arrow):
             return False
         return self.dom == other.dom and self.cod == other.cod\
             and all(x == y for x, y in zip(self.boxes, other.boxes))
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(repr(self))
 
     def then(self, *others: 'Arrow') -> 'Arrow':  # type: ignore[override]
@@ -323,10 +311,10 @@ class Arrow(Composable[Ob], Sequence['Arrow']):
             boxes, scan = boxes + other.boxes, other.cod
         return self.upgrade(Arrow(self.dom, scan, boxes, _scan=False))
 
-    def __rshift__(self, other):
+    def __rshift__(self, other: 'Arrow') -> 'Arrow':  # type: ignore[override]
         return self.then(other)
 
-    def __lshift__(self, other):
+    def __lshift__(self, other: 'Arrow') -> 'Arrow':  # type: ignore[override]
         return other.then(self)
 
     def dagger(self) -> 'Arrow':
@@ -354,7 +342,7 @@ class Arrow(Composable[Ob], Sequence['Arrow']):
         return self[::-1]
 
     @staticmethod
-    def id(x) -> 'Arrow':
+    def id(dom: Ob) -> 'Arrow':
         """
         Returns the identity arrow on x.
 
@@ -370,7 +358,7 @@ class Arrow(Composable[Ob], Sequence['Arrow']):
         -------
         cat.Id
         """
-        return Id(x)
+        return Id(dom)
 
 
 class Id(Arrow):
@@ -389,13 +377,13 @@ class Id(Arrow):
     --------
         cat.Arrow.id
     """
-    def __init__(self, x):
-        super().__init__(x, x, [], _scan=False)
+    def __init__(self, dom: Ob):
+        super().__init__(dom, dom, [], _scan=False)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Id({})".format(repr(self.dom))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "Id({})".format(str(self.dom))
 
 
@@ -427,7 +415,8 @@ class Box(Arrow):
             Extra data in the box, default is `None`.
 
     """
-    def __init__(self, name: Any, dom: Ob, cod: Ob, data=None, _dagger=False):
+    def __init__(self, name: Any, dom: Ob, cod: Ob,
+                 data: Any = None, _dagger: bool = False):
         if not str(name):
             raise ValueError(messages.empty_name(name))
         self._name, self._dom, self._cod = name, dom, cod
@@ -476,25 +465,25 @@ class Box(Arrow):
             name=self.name, dom=self.cod, cod=self.dom,
             data=self.data, _dagger=not self._dagger)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: Union[int, slice]) -> Arrow:
         if key == slice(None, None, -1):
             return self.dagger()
         return super().__getitem__(key)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self._dagger:
             return repr(self.dagger()) + ".dagger()"
         return "Box({}, {}, {}{})".format(
             *map(repr, [self.name, self.dom, self.cod]),
             ", data=" + repr(self.data) if self.data else '')
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.name) + ("[::-1]" if self._dagger else '')
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(super().__repr__())
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if isinstance(other, Box):
             return all(self.__getattribute__(x) == other.__getattribute__(x)
                        for x in ['name', 'dom', 'cod', 'data', '_dagger'])
@@ -502,8 +491,12 @@ class Box(Arrow):
             return len(other) == 1 and other[0] == self
         return False
 
-    def __lt__(self, other):
-        return self.name < other.name
+    def __lt__(self, other: 'Box') -> bool:
+        return cast(bool, self.name < other.name)
+
+T0 = TypeVar('T0')
+T1 = TypeVar('T1')
+MappingOrCallable = Union[Mapping[T0, T1], Callable[[T0], T1]]
 
 
 class Functor:
@@ -546,9 +539,10 @@ class Functor:
     >>> assert F(f.dom) == F(f).dom and F(f.cod) == F(f).cod
     """
     def __init__(self,
-                 ob: Union[Mapping[Ob, Ob], Callable[[Ob], Ob]],
-                 ar: Union[Mapping[Box, Arrow], Callable[[Box], Arrow]],
-                 ob_factory=None, ar_factory=None):
+                 ob: MappingOrCallable[Ob, Ob],
+                 ar: MappingOrCallable[Box, Arrow],
+                 ob_factory: Optional[Type[Ob]] = None,
+                 ar_factory: Optional[Type[Arrow]] = None):
         if ob_factory is None:
             ob_factory = Ob
         if ar_factory is None:
@@ -575,10 +569,11 @@ class Functor:
         return self._ar\
             if isinstance(self._ar, abc.Mapping) else Quiver(self._ar)
 
-    def __eq__(self, other):
-        return self.ob == other.ob and self.ar == other.ar
+    def __eq__(self, other: Any) -> bool:
+        return self.ob == other.ob and self.ar == other.ar\
+            if isinstance(other, Functor) else False
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Functor(ob={}, ar={})".format(repr(self.ob), repr(self.ar))
 
     @overload
@@ -587,7 +582,7 @@ class Functor:
     @overload
     def __call__(self, arrow: Arrow) -> Arrow: ...
 
-    def __call__(self, arrow):
+    def __call__(self, arrow: Union[Ob, Arrow]) -> Union[Ob, Arrow]:
         if isinstance(arrow, Ob):
             return self.ob[arrow]
         if isinstance(arrow, Box):
@@ -615,11 +610,11 @@ class Quiver(Mapping[Source, Target]):
     def __getitem__(self, box: Source) -> Target:
         return self._func(box)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Quiver({})".format(repr(self._func))
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Source]:
         raise TypeError
 
-    def __len__(self):
+    def __len__(self) -> int:
         raise TypeError

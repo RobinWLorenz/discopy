@@ -37,10 +37,11 @@ We can check the Eckerman-Hilton argument, up to interchanger.
 """
 
 from typing import (
-    Any, Iterable, Callable, Sequence, List, Union, cast, overload)
+    Any, Optional, Iterable, Tuple, Iterator, Type,
+    Callable, Sequence, List, Union, cast, overload)
 from mypy_extensions import KwArg
 from discopy import cat, messages, drawing
-from discopy.cat import Ob, AxiomError, Composable, AddableSequence
+from discopy.cat import Ob, AxiomError, Composable, MappingOrCallable
 
 
 class Ty(Ob, Sequence[Ob]):
@@ -153,44 +154,50 @@ class Ty(Ob, Sequence[Ob]):
         """ Allows class inheritance for tensor and __getitem__ """
         return ty
 
-    def __init__(self, *objects):
+    def __init__(self, *objects: Union[Any, Ob]):
         self._objects = tuple(
             x if isinstance(x, Ob) else Ob(x) for x in objects)
         super().__init__(self)
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Ty):
             return False
         return self.objects == other.objects
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(repr(self))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Ty({})".format(', '.join(repr(x.name) for x in self.objects))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return ' @ '.join(map(str, self)) or 'Ty()'
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.objects)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Ob]:
         for i in range(len(self)):
             yield self[i]
 
-    def __getitem__(self, key):
+    @overload
+    def __getitem__(self, key: int) -> Ob: ...
+
+    @overload
+    def __getitem__(self, key: slice) -> 'Ty': ...
+
+    def __getitem__(self, key: Union[int, slice]) -> Union[Ob, 'Ty']:
         if isinstance(key, slice):
             return self.upgrade(Ty(*self.objects[key]))
         return self.objects[key]
 
-    def __matmul__(self, other):
+    def __matmul__(self, other: 'Ty') -> 'Ty':
         return self.tensor(other)
 
-    def __add__(self, other):
+    def __add__(self, other: 'Ty') -> 'Ty':
         return self.tensor(other)
 
-    def __pow__(self, n_times):
+    def __pow__(self, n_times: int) -> 'Ty':
         if not isinstance(n_times, int):
             raise TypeError(messages.type_err(int, n_times))
         return sum(n_times * (self, ), type(self)())
@@ -212,17 +219,17 @@ class PRO(Ty):
                 raise TypeError(messages.type_err(int, x.name))
         return PRO(len(ty))
 
-    def __init__(self, n=0):
+    def __init__(self, n: Union[int, 'PRO', Ob] = 0):
         if isinstance(n, PRO):
             n = len(n)
         if isinstance(n, Ob):
-            n = n.name
+            n = cast(int, n.name)
         super().__init__(*(n * [1]))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "PRO({})".format(len(self))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return repr(len(self))
 
 
@@ -253,24 +260,24 @@ class Layer(cat.Box):
         self._left, self._box, self._right = left, box, right
         name = "Layer({}, {}, {})".format(left, box, right)
         dom, cod = left @ box.dom @ right, left @ box.cod @ right
-        super().__init__(name, dom, cod)
+        cat.Box.__init__(self, name, dom, cod)
 
     def __iter__(self  # type: ignore[override]
-            ) -> Iterable[Union[Ty, 'Diagram']]:
+            ) -> Iterator[Union[Ty, 'Diagram']]:
         yield self._left
         yield self._box
         yield self._right
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Layer({}, {}, {})".format(
             *map(repr, (self._left, self._box, self._right)))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return ("{} @ ".format(self._box.id(self._left)) if self._left else "")\
             + str(self._box)\
             + (" @ {}".format(self._box.id(self._right)) if self._right else "")
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: Union[int, slice]) -> cat.Arrow:
         if key == slice(None, None, -1):
             return Layer(self._left, self._box[::-1], self._right)
         return super().__getitem__(key)
@@ -308,8 +315,8 @@ class Diagram(cat.Arrow, Composable[Ty]):
         return diagram
 
     def __init__(self, dom: Ty, cod: Ty,
-                 boxes: AddableSequence['Diagram'], offsets: List[int],
-                 layers: Composable[Ty] = None):
+                 boxes: List['Diagram'], offsets: List[int],
+                 layers: Optional[Composable[Ty]] = None):
         if not isinstance(dom, Ty):
             raise TypeError(messages.type_err(Ty, dom))
         if not isinstance(cod, Ty):
@@ -331,14 +338,14 @@ class Diagram(cat.Arrow, Composable[Ty]):
             layers = layers >> cast(Composable[Ty], cat.Arrow.id(cod))
         self._layers, self._offsets = layers, tuple(offsets)
         super().__init__(
-            dom, cod, cast(AddableSequence[cat.Arrow], boxes), _scan=False)
+            dom, cod, cast(List[cat.Arrow], boxes), _scan=False)
         self.dom: Ty
         self.cod: Ty
-        self.boxes: AddableSequence[Diagram]  # type: ignore
+        self.boxes: List[Diagram]  # type: ignore
 
     @staticmethod
-    def id(x):
-        return Id(x)
+    def id(dom: Ty) -> 'Id':  # type: ignore[override]
+        return Id(dom)
 
     @property
     def offsets(self) -> List[int]:
@@ -348,7 +355,7 @@ class Diagram(cat.Arrow, Composable[Ty]):
         return list(self._offsets)
 
     @property
-    def layers(self) -> cat.Arrow:
+    def layers(self) -> Composable[Ty]:
         """
         A :class:`discopy.cat.Arrow` with :class:`Layer` boxes such that::
 
@@ -365,7 +372,7 @@ class Diagram(cat.Arrow, Composable[Ty]):
                 offsets=diagram.offsets[i:j],
                 layers=diagram.layers[i:j])
         """
-        return cast(cat.Arrow, self._layers)
+        return self._layers
 
     def then(self, *others: 'Diagram') -> 'Diagram':  # type: ignore[override]
         if not others:
@@ -408,24 +415,24 @@ class Diagram(cat.Arrow, Composable[Ty]):
         boxes = self.boxes + other.boxes
         offsets = self.offsets + [n + len(self.cod) for n in other.offsets]
         layers = cast(Composable[Ty], cat.Id(dom))
-        for left, box, right in self.layers:
+        for left, box, right in self.layers:  # type: ignore
             layers = layers >> cast(
                 Composable[Ty], Layer(left, box, right @ other.dom))
-        for left, box, right in other.layers:
+        for left, box, right in other.layers:  # type: ignore
             layers = layers >> cast(
                 Composable[Ty], Layer(self.cod @ left, box, right))
         return self.upgrade(Diagram(dom, cod, boxes, offsets, layers=layers))
 
-    def __matmul__(self, other):
+    def __matmul__(self, other: 'Diagram') -> 'Diagram':
         return self.tensor(other)
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Diagram):
             return False
         return all(self.__getattribute__(attr) == other.__getattribute__(attr)
                    for attr in ['dom', 'cod', 'boxes', 'offsets'])
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if not self.boxes:  # i.e. self is identity.
             return repr(self.id(self.dom))
         if len(self.boxes) == 1 and self.dom == self.boxes[0].dom:
@@ -434,28 +441,30 @@ class Diagram(cat.Arrow, Composable[Ty]):
             repr(self.dom), repr(self.cod),
             repr(self.boxes), repr(self.offsets))
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(repr(self))
 
-    def __iter__(self):
-        for left, box, right in self.layers:
+    def __iter__(self) -> Iterator['Diagram']:
+        for left, box, right in self.layers:  # type: ignore
             yield self.id(left) @ box @ self.id(right)
 
-    def __str__(self):
-        result = ' >> '.join(map(str, self.layers)) or str(self.id(self.dom))
+    def __str__(self) -> str:
+        layers = cast(cat.Arrow, self.layers)
+        result = ' >> '.join(map(str, layers)) or str(self.id(self.dom))
         if len(result) > 74:
             result = result.replace(' >>', '\\\n  >>')
         return result
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: Union[int, slice]) -> 'Diagram':
         if isinstance(key, slice):
-            layers = self.layers[key]
-            boxes_and_offsets = tuple(zip(*(
+            layers = self.layers[key]  # type: ignore
+            dom, cod = layers.dom, layers.cod
+            boxes, offsets = tuple(zip(*(
                 (box, len(left)) for left, box, _ in layers))) or ([], [])
-            inputs = (layers.dom, layers.cod) + boxes_and_offsets
-            return self.upgrade(Diagram(*inputs, layers=layers))
-        left, box, right = self.layers[key]
-        return self.id(left) @ box @ self.id(right)
+            return self.upgrade(Diagram(
+                dom, cod, boxes, offsets, layers=layers))
+        left, box, right = self.layers[key]  # type: ignore
+        return self.id(left) @ box @ self.id(right)  # type: ignore
 
     @staticmethod
     def swap(left: Ty, right: Ty) -> 'Diagram':
@@ -477,7 +486,7 @@ class Diagram(cat.Arrow, Composable[Ty]):
         return swap(left, right)
 
     @staticmethod
-    def permutation(perm: List[int], dom:Ty = None):
+    def permutation(perm: List[int], dom: Optional[Ty] = None) -> 'Diagram':
         """
         Returns the diagram that encodes a permutation of wires.
 
@@ -495,7 +504,7 @@ class Diagram(cat.Arrow, Composable[Ty]):
         """
         return permutation(perm, dom)
 
-    def interchange(self, i: int, j: int, left: bool = False):
+    def interchange(self, i: int, j: int, left: bool = False) -> 'Diagram':
         """
         Returns a new diagram with boxes i and j interchanged.
 
@@ -539,8 +548,8 @@ class Diagram(cat.Arrow, Composable[Ty]):
         if j < i:
             i, j = j, i
         off0, off1 = self.offsets[i], self.offsets[j]
-        left0, box0, right0 = self.layers[i]
-        left1, box1, right1 = self.layers[j]
+        left0, box0, right0 = self.layers[i]  # type: ignore
+        left1, box1, right1 = self.layers[j]  # type: ignore
         # By default, we check if box0 is to the right first, then to the left.
         if left and off1 >= off0 + len(box0.cod):  # box0 left of box1
             off1 = off1 - len(box0.cod) + len(box0.dom)
@@ -561,11 +570,12 @@ class Diagram(cat.Arrow, Composable[Ty]):
             raise InterchangerError(box0, box1)
         boxes = self.boxes[:i] + [box1, box0] + self.boxes[i + 2:]
         offsets = self.offsets[:i] + [off1, off0] + self.offsets[i + 2:]
+        # type: ignore
         layers = self.layers[:i] >> layer1 >> layer0 >> self.layers[i + 2:]
         return self.upgrade(
             Diagram(self.dom, self.cod, boxes, offsets, layers=layers))
 
-    def normalize(self, left: bool = False):
+    def normalize(self, left: bool = False) -> Iterator['Diagram']:
         """
         Implements normalisation of connected diagrams, see arXiv:1804.07832.
 
@@ -605,7 +615,8 @@ class Diagram(cat.Arrow, Composable[Ty]):
 
     Normalizer = Callable[['Diagram', KwArg(Any)], Iterable['Diagram']]
 
-    def normal_form(self, normalize: Normalizer = None, **params):
+    def normal_form(self, normalize: Optional[Normalizer] = None,
+                    **params: Any) -> 'Diagram':
         """
         Returns the normal form of a diagram.
 
@@ -631,7 +642,8 @@ class Diagram(cat.Arrow, Composable[Ty]):
             cache.add(diagram)
         return diagram
 
-    def foliate(self, yield_slices=False):
+    def foliate(self, yield_slices: Optional[bool] = False
+                ) -> Iterator[Union[List['Diagram'], 'Diagram']]:
         """
         Generator yielding the interchanger steps in the foliation of self.
 
@@ -663,7 +675,7 @@ class Diagram(cat.Arrow, Composable[Ty]):
         >>> a = kets.foliate()
         >>> assert next(a) == kets
         """
-        def is_right_of(last, diagram):
+        def is_right_of(last: int, diagram: Diagram) -> Optional[bool]:
             off0, off1 = diagram.offsets[last], diagram.offsets[last + 1]
             box0, box1 = diagram.boxes[last], diagram.boxes[last + 1]
             if off1 >= off0 + len(box0.cod):  # box1 right of box0
@@ -672,7 +684,8 @@ class Diagram(cat.Arrow, Composable[Ty]):
                 return False
             return None
 
-        def move_in_slice(first, last, k, diagram):
+        def move_in_slice(first: int, last: int,
+                          k: int, diagram: Diagram) -> Optional[Diagram]:
             result = diagram
             try:
                 if not k == last + 1:
@@ -710,7 +723,7 @@ class Diagram(cat.Arrow, Composable[Ty]):
         if yield_slices:
             yield slices
 
-    def flatten(self):
+    def flatten(self) -> 'Diagram':
         """
         Takes a diagram of diagrams and returns a diagram.
 
@@ -725,7 +738,7 @@ class Diagram(cat.Arrow, Composable[Ty]):
         """
         return self.upgrade(Functor(lambda x: x, lambda f: f)(self))
 
-    def foliation(self):
+    def foliation(self) -> 'Diagram':
         """
         Returns a diagram with normal_form diagrams of depth 1 as boxes
         such that its flattening gives the original diagram back.
@@ -747,10 +760,11 @@ class Diagram(cat.Arrow, Composable[Ty]):
         >>> assert last_diagram == slices.flatten()
         """
         *_, slices = self.foliate(yield_slices=True)
+        boxes, offsets = cast(List[Diagram], slices), len(slices) * [0]
         return self.upgrade(
-            Diagram(self.dom, self.cod, slices, len(slices) * [0]))
+            Diagram(self.dom, self.cod, boxes, offsets))
 
-    def depth(self):
+    def depth(self) -> int:
         """
         Computes the depth of a diagram by foliating it
 
@@ -764,7 +778,7 @@ class Diagram(cat.Arrow, Composable[Ty]):
         *_, slices = self.foliate(yield_slices=True)
         return len(slices)
 
-    def width(self):
+    def width(self) -> int:
         """
         Computes the width of a diagram,
         i.e. the maximum number of parallel wires.
@@ -781,7 +795,7 @@ class Diagram(cat.Arrow, Composable[Ty]):
             width = max(width, len(scan))
         return width
 
-    def draw(self, **params):
+    def draw(self, **params: Any) -> Any:
         """
         Draws a diagram using networkx and matplotlib.
 
@@ -815,7 +829,8 @@ class Diagram(cat.Arrow, Composable[Ty]):
         """
         return drawing.draw(self, **params)
 
-    def to_gif(self, *diagrams, **params):  # pragma: no cover
+    def to_gif(self, *diagrams: 'Diagram', **params: Any
+               ) -> Any:  # pragma: no cover
         """
         Builds a gif with the normalisation steps.
 
@@ -839,7 +854,7 @@ class InterchangerError(AxiomError):
     """
     This is raised when we try to interchange conected boxes.
     """
-    def __init__(self, box0, box1):
+    def __init__(self, box0: Box, box1: Box):
         super().__init__("Boxes {} and {} do not commute.".format(box0, box1))
 
 
@@ -850,17 +865,18 @@ class Id(Diagram):
     >>> f = Box('f', s, t)
     >>> assert f >> Id(t) == f == Id(s) >> f
     """
-    def __init__(self, x):
-        super().__init__(x, x, [], [], layers=cat.Id(x))
+    def __init__(self, dom: Ty):
+        super().__init__(
+            dom, dom, [], [], layers=cast(Composable[Ty], cat.Id(dom)))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Id({})".format(repr(self.dom))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "Id({})".format(str(self.dom))
 
 
-class Box(cat.Box, Diagram):
+class Box(cat.Box, Diagram):  # type: ignore
     """
     Implements a box as a diagram with :code:`boxes=[self], offsets=[0]`.
 
@@ -869,13 +885,15 @@ class Box(cat.Box, Diagram):
     >>> assert Id(Ty()) @ f == f == f @ Id(Ty())
     >>> assert f == f[::-1][::-1]
     """
-    def __init__(self, name, dom, cod, data=None, _dagger=False):
+    def __init__(self, name: Any, dom: Ty, cod: Ty,
+                 data: Any = None, _dagger: bool = False):
         cat.Box.__init__(self, name, dom, cod, data=data, _dagger=_dagger)
         layer = Layer(type(dom)(), self, type(dom)())
-        layers = cat.Arrow(dom, cod, [layer], _scan=False)
+        layers = cast(Composable[Ty], cat.Arrow(
+            dom, cod, [layer], _scan=False))
         Diagram.__init__(self, dom, cod, [self], [0], layers=layers)
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if isinstance(other, Box):
             return cat.Box.__eq__(self, other)
         if isinstance(other, Diagram):
@@ -883,7 +901,7 @@ class Box(cat.Box, Diagram):
                 and (other.dom, other.cod) == (self.dom, self.cod)
         return False
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(repr(self))
 
 
@@ -898,19 +916,19 @@ class Swap(Box):
     right : monoidal.Ty
         of length 1.
     """
-    def __init__(self, left, right):
+    def __init__(self, left: Ty, right: Ty):
         if len(left) != 1 or len(right) != 1:
             raise ValueError(messages.swap_vs_swaps(left, right))
         self.left, self.right = left, right
         super().__init__('SWAP', left @ right, right @ left)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Swap({}, {})".format(repr(self.left), repr(self.right))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "Swap({}, {})".format(self.left, self.right)
 
-    def dagger(self):
+    def dagger(self) -> Swap:
         return Swap(self.right, self.left)
 
 
@@ -928,12 +946,17 @@ class Functor(cat.Functor):
     >>> assert F(f0 @ f1) == f1 @ f0
     >>> assert F(f0 >> f0[::-1]) == f1 >> f1[::-1]
     """
-    def __init__(self, ob, ar, ob_factory=None, ar_factory=None):
+    def __init__(self,
+                 ob: MappingOrCallable[Ty, Ty],
+                 ar: MappingOrCallable[Box, Diagram],
+                 ob_factory: Optional[Type[Ty]] = None,
+                 ar_factory: Optional[Type[Diagram]]=None):
         if ob_factory is None:
             ob_factory = Ty
         if ar_factory is None:
             ar_factory = Diagram
-        super().__init__(ob, ar, ob_factory=ob_factory, ar_factory=ar_factory)
+        super().__init__(ob, ar,  # type: ignore
+                         ob_factory=ob_factory, ar_factory=ar_factory)
 
     @overload  # type: ignore[override]
     def __call__(self, diagram: Ty) -> Ty: ...
@@ -941,7 +964,7 @@ class Functor(cat.Functor):
     @overload
     def __call__(self, diagram: Diagram) -> Diagram: ...
 
-    def __call__(self, diagram):
+    def __call__(self, diagram: Union[Ty, Diagram]) -> Union[Ty, Diagram]:
         if isinstance(diagram, Ty):
             return sum([self.ob[type(diagram)(x)] for x in diagram],
                        self.ob_factory())  # the empty type is the unit.
@@ -958,7 +981,8 @@ class Functor(cat.Functor):
         raise TypeError(messages.type_err(Diagram, diagram))
 
 
-def swap(left, right, ar_factory=Diagram, swap_factory=Swap):
+def swap(left: Ty, right: Ty,
+         ar_factory=Diagram, swap_factory=Swap) -> Diagram:
     """ Constructs swap diagrams of arbitrary types """
     if not left:
         return ar_factory.id(right)
@@ -971,7 +995,8 @@ def swap(left, right, ar_factory=Diagram, swap_factory=Swap):
         >> ar_factory.swap(left[:1], right) @ ar_factory.id(left[1:])
 
 
-def permutation(perm, dom=None, ar_factory=Diagram):
+def permutation(perm: List[int], dom: Optional[Ty] = None,
+                ar_factory=Diagram) -> Diagram:
     """ Constructs permutation diagrams of arbitrary types """
     if set(range(len(perm))) != set(perm):
         raise ValueError("Input should be a permutation of range(n).")
@@ -989,7 +1014,7 @@ def permutation(perm, dom=None, ar_factory=Diagram):
     return diagram
 
 
-def spiral(n_cups, _type=Ty('x')):
+def spiral(n_cups: int, _type: Ty = Ty('x')):
     """
     Implements the asymptotic worst-case for normal_form, see arXiv:1804.07832.
     """
@@ -997,9 +1022,11 @@ def spiral(n_cups, _type=Ty('x')):
     cup, cap = Box('cup', _type @ _type, Ty()), Box('cap', Ty(), _type @ _type)
     result = unit
     for i in range(n_cups):
-        result = result >> Id(_type ** i) @ cap @ Id(_type ** (i + 1))
-    result = result >> Id(_type ** n_cups) @ counit @ Id(_type ** n_cups)
+        result = result\
+            >> Id(_type ** i) @ cap @ Id(_type ** (i + 1))  # type: ignore
+    result = result\
+        >> Id(_type ** n_cups) @ counit @ Id(_type ** n_cups)  # type: ignore
     for i in range(n_cups):
-        result = result >>\
-            Id(_type ** (n_cups - i - 1)) @ cup @ Id(_type ** (n_cups - i - 1))
+        result = result >> Id(_type ** (n_cups - i - 1))\
+            @ cup @ Id(_type ** (n_cups - i - 1))  # type: ignore
     return result
