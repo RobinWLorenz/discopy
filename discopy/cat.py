@@ -23,10 +23,14 @@ We can create dagger functors from the free category to itself:
 
 from numbers import Number
 from functools import total_ordering
-from collections.abc import Mapping, Iterable
+from collections import abc
 
 from discopy import messages
 
+from typing import (
+    Type, Any, Sequence, Iterable, Iterator, List, Union, Mapping, Callable,
+    Set, Tuple, Optional, TypeVar, Protocol, Generic, overload, cast)
+from sympy import Expr, Symbol # type: ignore
 
 @total_ordering
 class Ob:
@@ -59,13 +63,13 @@ class Ob:
     TypeError: unhashable type: 'list'
 
     """
-    def __init__(self, name):
+    def __init__(self: Ob, name: str):
         if not str(name):
             raise ValueError(messages.empty_name(name))
         self._name = name
 
     @property
-    def name(self):
+    def name(self: Ob) -> str:
         """
         The name of an object is immutable, it cannot be empty.
 
@@ -79,21 +83,21 @@ class Ob:
         """
         return self._name
 
-    def __repr__(self):
+    def __repr__(self: Ob) -> str:
         return "Ob({})".format(repr(self.name))
 
-    def __str__(self):
+    def __str__(self: Ob) -> str:
         return str(self.name)
 
-    def __eq__(self, other):
+    def __eq__(self: Ob, other: Any) -> bool:
         if not isinstance(other, Ob):
             return False
         return self.name == other.name
 
-    def __hash__(self):
+    def __hash__(self: Ob) -> int:
         return hash(self.name)
 
-    def __lt__(self, other):
+    def __lt__(self: Ob, other: Ob) -> bool:
         return self.name < other.name
 
 
@@ -124,7 +128,8 @@ class Arrow:
     >>> print(arrow[::-1])
     h[::-1] >> g[::-1] >> f[::-1]
     """
-    def __init__(self, dom, cod, boxes, _scan=True):
+    def __init__(self: Arrow, dom: Ob, cod: Ob,
+                 boxes: List[Arrow], _scan: bool=True):
         if not isinstance(dom, Ob):
             raise TypeError(messages.type_err(Ob, dom))
         if not isinstance(cod, Ob):
@@ -144,12 +149,12 @@ class Arrow:
         self._dom, self._cod, self._boxes = dom, cod, boxes
 
     @staticmethod
-    def upgrade(old):
+    def upgrade(old: Arrow) -> Arrow:
         """ Allows class inheritance. """
         return old
 
     @property
-    def dom(self):
+    def dom(self: Arrow) -> Ob:
         """
         The domain of an arrow is immutable.
 
@@ -163,7 +168,7 @@ class Arrow:
         return self._dom
 
     @property
-    def cod(self):
+    def cod(self: Arrow) -> Ob:
         """
         The codomain of an arrow is immutable.
 
@@ -177,7 +182,7 @@ class Arrow:
         return self._cod
 
     @property
-    def boxes(self):
+    def boxes(self: Arrow) -> List[Arrow]:
         """
         The list of boxes in an arrow is immutable. Use composition instead.
 
@@ -188,11 +193,11 @@ class Arrow:
         """
         return list(self._boxes)
 
-    def __iter__(self):
+    def __iter__(self: Arrow) -> Iterator[Arrow]:
         for box in self.boxes:
             yield box
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: Union[int, slice]) -> Arrow:
         if isinstance(key, slice):
             if key.step == -1:
                 boxes = [box[::-1] for box in self.boxes[key]]
@@ -211,10 +216,10 @@ class Arrow:
                 Arrow(boxes[0].dom, boxes[-1].cod, boxes, _scan=False))
         return self.boxes[key]
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.boxes)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if not self.boxes:  # i.e. self is identity.
             return repr(Id(self.dom))
         if len(self.boxes) == 1:  # i.e. self is a box.
@@ -222,30 +227,31 @@ class Arrow:
         return "Arrow(dom={}, cod={}, boxes={})".format(
             repr(self.dom), repr(self.cod), repr(self.boxes))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return ' >> '.join(map(str, self)) or str(self.id(self.dom))
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Arrow):
             return False
         return all(getattr(self, a) == getattr(other, a)
                    for a in ["dom", "cod", "boxes"])
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(repr(self))
 
-    def __add__(self, other):
+    def __add__(self, other) -> Arrow:
         return self.sum([self]) + other
 
-    def __radd__(self, other):
+    def __radd__(self, other) -> Arrow:
         return self.__add__(other)
 
     @staticmethod
-    def sum(terms, dom=None, cod=None):
+    def sum(terms: List[Arrow], dom: Optional[Ob]=None,
+            cod: Optional[Ob]=None) -> 'Sum':
         """ Formal sum of `terms`. """
         return Sum(terms, dom, cod)
 
-    def then(self, *others):
+    def then(self, *others: Arrow) -> Arrow:
         """
         Returns the composition of `self` with arrows `others`.
 
@@ -295,13 +301,13 @@ class Arrow:
         return self.upgrade(Arrow(
             self.dom, other.cod, self.boxes + other.boxes, _scan=False))
 
-    def __rshift__(self, other):
+    def __rshift__(self, other: Arrow) -> Arrow:
         return self.then(other)
 
-    def __lshift__(self, other):
+    def __lshift__(self, other: Arrow) -> Arrow:
         return other.then(self)
 
-    def dagger(self):
+    def dagger(self) -> Arrow:
         """
         Returns the dagger of `self`, this method is called using the unary
         operator :code:`[::-1]`, i.e. :code:`self[::-1] == self.dagger()`.
@@ -326,7 +332,7 @@ class Arrow:
         return self[::-1]
 
     @staticmethod
-    def id(dom):
+    def id(dom: Ob) -> Arrow:
         """
         Returns the identity arrow on `dom`.
 
@@ -345,7 +351,7 @@ class Arrow:
         return Id(dom)
 
     @property
-    def free_symbols(self):
+    def free_symbols(self) -> Set[Symbol]:
         """
         Free symbols in a :class:`Arrow`.
 
@@ -357,7 +363,7 @@ class Arrow:
         """
         return {x for box in self.boxes for x in box.free_symbols}
 
-    def subs(self, *args):
+    def subs(self, *args:Union[Expr, Symbol])->Arrow:
         """
         Substitute a variable by an expression.
 
@@ -409,13 +415,13 @@ class Id(Arrow):
     --------
         cat.Arrow.id
     """
-    def __init__(self, dom):
+    def __init__(self, dom: Ob):
         Arrow.__init__(self, dom, dom, [], _scan=False)
 
-    def __repr__(self):
+    def __repr__(self)-> str:
         return "Id({})".format(repr(self.dom))
 
-    def __str__(self):
+    def __str__(self)-> str:
         return "Id({})".format(str(self.dom))
 
 
@@ -450,7 +456,8 @@ class Box(Arrow):
     >>> assert f[:0] == Id(f.dom) and f[1:] == Id(f.cod)
 
     """
-    def __init__(self, name, dom, cod, data=None, _dagger=False):
+    def __init__(self, name: str, dom: Ob, cod: Ob,
+                 data: Any=None, _dagger: bool=False):
         """
         """
         if not str(name):
@@ -460,7 +467,7 @@ class Box(Arrow):
         Arrow.__init__(self, dom, cod, [self], _scan=False)
 
     @property
-    def name(self):
+    def name(self) -> str:
         """
         The name of a box is immutable.
 
@@ -474,7 +481,7 @@ class Box(Arrow):
         return self._name
 
     @property
-    def data(self):
+    def data(self) -> Any:
         """
         The attribute `data` is immutable, but it can hold a mutable object.
 
@@ -490,7 +497,7 @@ class Box(Arrow):
         return self._data
 
     @property
-    def free_symbols(self):
+    def free_symbols(self) -> Set[Symbol]:
         def recursive_free_symbols(data):
             if isinstance(data, Mapping):
                 return sum(map(recursive_free_symbols, data.values()), [])
@@ -501,7 +508,7 @@ class Box(Arrow):
             return []
         return set(recursive_free_symbols(self.data))
 
-    def subs(self, *args):
+    def subs(self, *args: Union[Expr, Symbol]) -> Box:
         vars = {var for var, _ in args[0]} if len(args) == 1 else {args[0]}
         if not any(var in self.free_symbols for var in vars):
             return self
@@ -516,36 +523,36 @@ class Box(Arrow):
                    data=recursive_subs(self.data, *args))
 
     @property
-    def is_dagger(self):
+    def is_dagger(self) -> bool:
         """
         Whether the box is dagger.
         """
         return self._dagger
 
-    def dagger(self):
+    def dagger(self) -> Box:
         return type(self)(
             name=self.name, dom=self.cod, cod=self.dom,
             data=self.data, _dagger=not self._dagger)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: Union[int, slice]) -> Arrow:
         if key == slice(None, None, -1):
             return self.dagger()
         return super().__getitem__(key)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self._dagger:
             return repr(self.dagger()) + ".dagger()"
         return "Box({}, {}, {}{})".format(
             *map(repr, [self.name, self.dom, self.cod]),
             ", data=" + repr(self.data) if self.data else '')
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.name) + ("[::-1]" if self._dagger else '')
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(super().__repr__())
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if isinstance(other, Box):
             return all(self.__getattribute__(x) == other.__getattribute__(x)
                        for x in ['_name', 'dom', 'cod', 'data', '_dagger'])
@@ -553,7 +560,7 @@ class Box(Arrow):
             return len(other) == 1 and other[0] == self
         return False
 
-    def __lt__(self, other):
+    def __lt__(self, other: Box) -> bool:
         return self.name < other.name
 
 
@@ -590,10 +597,13 @@ class Sum(Box):
     A diagram is different from the sum of itself, i.e. :code:`Sum([f]) != f`
     """
     @staticmethod
-    def upgrade(old):
-        return old
+    def upgrade(old: Arrow) -> Sum:
+        return cast(Sum, old)
 
-    def __init__(self, terms, dom=None, cod=None):
+    def __init__(self,
+                 terms: List[Arrow],
+                 dom: Optional[Ob]=None, 
+                 cod: Optional[Ob]=None):
         self.terms = list(terms)
         if not terms:
             if dom is None or cod is None:
@@ -611,40 +621,40 @@ class Sum(Box):
             else "Sum([], dom={}, cod={})".format(repr(dom), repr(cod))
         super().__init__(name, dom, cod)
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Sum):
             return False
         return (self.dom, self.cod, self.terms)\
             == (other.dom, other.cod, other.terms)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(repr(self))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.name
 
-    def __str__(self):
+    def __str__(self) -> str:
         if not self.terms:
             return "Sum([], {}, {})".format(self.dom, self.cod)
         return " + ".join("({})".format(arrow) for arrow in self.terms)
 
-    def __add__(self, other):
+    def __add__(self, other: Any) -> Sum:
         if other == 0:
             return self
         other = other if isinstance(other, Sum) else Sum([other])
         return self.sum(self.terms + other.terms, self.dom, self.cod)
 
-    def __radd__(self, other):
+    def __radd__(self, other:Any) -> Sum:
         return self.__add__(other)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Arrow]:
         for arrow in self.terms:
             yield arrow
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.terms)
 
-    def then(self, *others):
+    def then(self, *others: Arrow) -> Arrow:
         if len(others) != 1:
             return super().then(*others)
         other = others[0] if isinstance(others[0], Sum) else Sum(list(others))
@@ -652,14 +662,17 @@ class Sum(Box):
         terms = [f.then(g) for f in self.terms for g in other.terms]
         return self.upgrade(sum(terms, unit))
 
-    def dagger(self):
+    def dagger(self) -> Sum:
         unit = Sum([], self.cod, self.dom)
         return self.upgrade(sum([f.dagger() for f in self.terms], unit))
 
-    def subs(self, *args):
+    def subs(self, *args: Union[Expr, Symbol]) -> Sum:
         unit = Sum([], self.dom, self.cod)
         return self.upgrade(sum([f.subs(*args) for f in self.terms], unit))
 
+T0 = TypeVar('T0')
+T1 = TypeVar('T1')
+MappingOrCallable = Union[Mapping[T0, T1], Callable[[T0], T1]]
 
 class Functor:
     """
@@ -707,7 +720,11 @@ class Functor:
     Quiver : For functors from infinitely-generated categories,
              use quivers to create dict-like objects from functions.
     """
-    def __init__(self, ob, ar, ob_factory=None, ar_factory=None):
+    def __init__(self, 
+                 ob: MappingOrCallable[Ob, Ob],
+                 ar: MappingOrCallable[Box, Arrow],
+                 ob_factory: Optional[Type[Ob]]=None, 
+                 ar_factory: Optional[Type[Arrow]]=None):
         if ob_factory is None:
             ob_factory = Ob
         if ar_factory is None:
@@ -716,7 +733,7 @@ class Functor:
         self._ob, self._ar = ob, ar
 
     @property
-    def ob(self):
+    def ob(self)->Mapping[Ob, Ob]:
         """
         Mapping on objects.
 
@@ -724,10 +741,10 @@ class Functor:
         >>> assert F.ob == {Ob('x'): Ob('y')}
         """
         return self._ob\
-            if hasattr(self._ob, "__getitem__") else Quiver(self._ob)
+            if isinstance(self._ob, abc.Mapping) else Quiver(self._ob)
 
     @property
-    def ar(self):
+    def ar(self) -> Mapping[Box, Arrow]:
         """
         Mapping on arrows.
 
@@ -736,15 +753,24 @@ class Functor:
         >>> assert F.ar == {f: g}
         """
         return self._ar\
-            if hasattr(self._ar, "__getitem__") else Quiver(self._ar)
+            if isinstance(self._ar, abc.Mapping) else Quiver(self._ar)
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         return self.ob == other.ob and self.ar == other.ar
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Functor(ob={}, ar={})".format(repr(self.ob), repr(self.ar))
 
-    def __call__(self, arrow):
+    @overload
+    def __call__(self, arrow: Sum) -> Sum: ...
+
+    @overload
+    def __call__(self, arrow: Ob) -> Ob: ...
+
+    @overload
+    def __call__(self, arrow: Arrow) -> Arrow: ...
+
+    def __call__(self, arrow: Union[Ob, Arrow, Box, Sum]) -> Union[Ob, Arrow, Box, Sum]:
         if isinstance(arrow, Sum):
             return self.ar_factory.sum(
                 list(map(self, arrow)), self(arrow.dom), self(arrow.cod))
@@ -758,8 +784,10 @@ class Functor:
             return self.ar_factory.id(self(arrow.dom)).then(*map(self, arrow))
         raise TypeError(messages.type_err(Arrow, arrow))
 
+Source = TypeVar('Source')
+Target = TypeVar('Target')
 
-class Quiver:
+class Quiver(Mapping[Source, Target]):
     """
     Wraps a function into an immutable dict-like object, used as input for a
     :class:`Functor`.
@@ -799,11 +827,17 @@ class Quiver:
     >>> m.data.append(False)
     >>> assert F(m) == m[::-1]
     """
-    def __init__(self, func):
+    def __init__(self, func: Callable[[Source], Target]):
         self._func = func
 
-    def __getitem__(self, box):
+    def __getitem__(self, box: Source) -> Target:
         return self._func(box)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Quiver({})".format(repr(self._func))
+
+    def __iter__(self) -> Iterator[Source]:
+        raise TypeError
+
+    def __len__(self) -> int:
+        raise TypeError

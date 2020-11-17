@@ -6,11 +6,11 @@ Drawing module.
 import os
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
-import networkx as nx
-from PIL import Image
-import matplotlib.pyplot as plt
-from matplotlib.path import Path
-from matplotlib.patches import PathPatch
+import networkx as nx # type: ignore
+from PIL import Image # type: ignore
+import matplotlib.pyplot as plt # type: ignore
+from matplotlib.path import Path # type: ignore
+from matplotlib.patches import PathPatch # type: ignore
 
 
 COLORS = {
@@ -339,7 +339,7 @@ def to_gif(diagram, *diagrams, path=None,
                        **{'loop': 0} if loop else {})
         try:
             # pylint: disable=import-outside-toplevel
-            from IPython.display import HTML
+            from IPython.display import HTML # type: ignore
             return HTML('<img src="{}">'.format(path))
         except ImportError:
             return '<img src="{}">'.format(path)
